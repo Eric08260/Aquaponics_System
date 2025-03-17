@@ -2,20 +2,46 @@
 
 #include <Arduino.h>
 
-const int adcPin = A0; // Make sure A0 is a valid ADC pin on your ESP32
+#define PH_SENSOR_PIN 34  // Analog pin connected to pH sensor
+#define NUM_SAMPLES 10    // Number of samples for averaging
+
+// ✅ Adjust these values based on calibration
+#define PH_NEUTRAL_VOLTAGE 1.65  // Voltage at pH 7 (typically ~1.65V for ESP32)
+#define PH_SLOPE -0.18           // Slope factor (depends on your sensor)
 
 void setup() {
     Serial.begin(115200);
+    delay(1000);  // Allow sensor to stabilize
+}
+
+// Function to get stable voltage readings
+float getStableVoltage() {
+    float totalVoltage = 0;
+
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        int analogValue = analogRead(PH_SENSOR_PIN);
+        float voltage = analogValue * (3.3 / 4095.0); // Convert ADC value to voltage
+        totalVoltage += voltage;
+        delay(10);  // Small delay to reduce noise
+    }
+
+    return totalVoltage / NUM_SAMPLES;  // Return the average voltage
+}
+
+// Function to calculate pH from voltage
+float getStablePH(float voltage) {
+    return (voltage - PH_NEUTRAL_VOLTAGE) / PH_SLOPE + 7.0;
 }
 
 void loop() {
-    int adcValue = analogRead(adcPin);
-    float phVoltage = (float)adcValue * 3.3 / 4095.0; // Adjusted for ESP32's 12-bit ADC and 3.3V reference
-    
-    Serial.print("ADC = "); 
-    Serial.print(adcValue);
-    Serial.print("  Voltage = "); 
-    Serial.println(phVoltage, 3);
-    
-    delay(1000);
+    float voltage = getStableVoltage();  // Get stable voltage
+    float pH = getStablePH(voltage);    // Convert voltage to pH
+
+    Serial.print("Voltage: ");
+    Serial.print(voltage, 3); // Print voltage with 3 decimal places
+    Serial.print(" V | pH Value: ");
+    Serial.println(pH, 2); // Print pH with 2 decimal places
+
+    delay(1000);  // Read every second
 }
+
