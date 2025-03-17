@@ -1,0 +1,21 @@
+//pH Sensor
+
+#include <Arduino.h>
+
+const int adcPin = A0; // Make sure A0 is a valid ADC pin on your ESP32
+
+void setup() {
+    Serial.begin(115200);
+}
+
+void loop() {
+    int adcValue = analogRead(adcPin);
+    float phVoltage = (float)adcValue * 3.3 / 4095.0; // Adjusted for ESP32's 12-bit ADC and 3.3V reference
+    
+    Serial.print("ADC = "); 
+    Serial.print(adcValue);
+    Serial.print("  Voltage = "); 
+    Serial.println(phVoltage, 3);
+    
+    delay(1000);
+}
