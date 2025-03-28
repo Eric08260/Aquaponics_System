@@ -30,8 +30,8 @@
 #define FLOW_CALIBRATION_FACTOR 7.5
 
 // ✅ Lighting Configuration
-const int redIntensity = 250;
-const int blueIntensity = 50;
+const int redIntensity = 100;
+const int blueIntensity = 20;
 const int photoperiod = 18 * 3600 * 1000; // 18 hours
 const int darkPeriod = 6 * 3600 * 1000;   // 6 hours
 
@@ -120,6 +120,19 @@ float getStablePH(float voltage) {
 unsigned long ledStartTime = 0;
 bool isLightOn = true;
 
+// ✅ pH Adjustment
+void adjustPH(float pH) {
+    if (pH <= 6) {
+        digitalWrite(PH_UP_PIN, HIGH);
+        delay(1000);
+        digitalWrite(PH_UP_PIN, LOW);
+    } else if (pH >= 9) {
+        digitalWrite(PH_DOWN_PIN, HIGH);
+        delay(1000);
+        digitalWrite(PH_DOWN_PIN, LOW);
+    }
+}
+
 // ✅ Setup Function
 void setup() {
     Serial.begin(115200);
@@ -140,6 +153,8 @@ void setup() {
     pinMode(PUMP_PIN, OUTPUT);
     pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
     pinMode(WATER_LEVEL_SENSOR_PIN, INPUT);
+    pinMode(PH_UP_PIN, OUTPUT);
+    pinMode(PH_DOWN_PIN, OUTPUT);
     
     // Attach Interrupt for Flow Sensor
     attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), pulseCounter, FALLING);
@@ -169,6 +184,7 @@ void loop() {
         Serial.println(pH, 2);
 
         Blynk.virtualWrite(V1, pH);
+        adjustPH(pH);
 
         analogWrite(PUMP_PIN, PUMP_POWER);
         Blynk.virtualWrite(V2, PUMP_POWER);
