@@ -1,0 +1,211 @@
+#define BLYNK_TEMPLATE_ID "TMPL6xcOo1oC5"
+#define BLYNK_TEMPLATE_NAME "Aquaponics System"
+#define BLYNK_AUTH_TOKEN "KJBjgczeTrISBeh3isop51MU2QqSDIc7"
+
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
+
+// ✅ Hardware Pin Definitions
+#define PH_DOWN_PIN 21
+#define PH_UP_PIN 19
+#define PH_SENSOR_PIN 34
+#define PUMP_PIN 14
+#define FLOW_SENSOR_PIN 27
+#define WATER_LEVEL_SENSOR_PIN 35  // MH Water Sensor Pin
+#define LED_PIN_1 33   // First 60 LEDs
+#define LED_PIN_2 32   // Second 60 LEDs
+#define NUM_LEDS_PER_STRIP 60
+#define NUM_SAMPLES 20
+#define BUFFER_SIZE 5
+
+// ✅ pH Sensor Calibration
+#define PH_NEUTRAL_VOLTAGE 1.385
+#define PH_SLOPE -0.103
+
+// ✅ Water Pump Configuration
+#define PUMP_POWER 76  // 30% of 255 PWM
+#define FLOW_CALIBRATION_FACTOR 7.5
+
+// ✅ Lighting Configuration
+const int redIntensity = 200;
+const int blueIntensity = 40;
+const int photoperiod = 18 * 3600 * 1000; // 18 hours
+const int darkPeriod = 6 * 3600 * 1000;   // 6 hours
+
+// ✅ WiFi Credentials
+char ssid[] = "BLUEBERRY";
+char pass[] = "21889356";
+
+// ✅ Flow Sensor Variables
+volatile int pulseCount = 0;
+float flowRate = 0.0;
+float totalLiters = 0.0;
+
+// ✅ pH Sensor Variables
+float voltageBuffer[BUFFER_SIZE] = {0};
+int bufferIndex = 0;
+
+// ✅ Feeding Timer
+unsigned long lastFeedingTime = 0;
+const unsigned long feedingInterval = 43200000; // 12 hours in ms
+
+// ✅ Initialize NeoPixel LED Strips
+Adafruit_NeoPixel strip1(NUM_LEDS_PER_STRIP, LED_PIN_1, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2(NUM_LEDS_PER_STRIP, LED_PIN_2, NEO_GRB + NEO_KHZ800);
+
+// ✅ Flow Sensor Interrupt Handler
+void IRAM_ATTR pulseCounter() {
+    pulseCount++;
+}
+
+// ✅ Set LED Strip Colors Alternating Red & Blue
+void setAlternatingLEDs(int red, int blue) {
+    for (int i = 0; i < NUM_LEDS_PER_STRIP; i++) {
+        if (i % 2 == 0) {
+            strip1.setPixelColor(i, strip1.Color(red, 0, 0));
+            strip2.setPixelColor(i, strip2.Color(red, 0, 0));
+        } else {
+            strip1.setPixelColor(i, strip1.Color(0, 0, blue));
+            strip2.setPixelColor(i, strip2.Color(0, 0, blue));
+        }
+    }
+    strip1.show();
+    strip2.show();
+}
+
+// ✅ Get Stable Voltage Reading (Median Filtering)
+float getStableVoltage() {
+    float voltageReadings[NUM_SAMPLES];
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        int analogValue = analogRead(PH_SENSOR_PIN);
+        voltageReadings[i] = analogValue * (3.3 / 4095.0);
+        delay(5);
+    }
+
+    // Sort array (Bubble Sort)
+    for (int i = 0; i < NUM_SAMPLES - 1; i++) {
+        for (int j = 0; j < NUM_SAMPLES - i - 1; j++) {
+            if (voltageReadings[j] > voltageReadings[j + 1]) {
+                float temp = voltageReadings[j];
+                voltageReadings[j] = voltageReadings[j + 1];
+                voltageReadings[j + 1] = temp;
+            }
+        }
+    }
+
+    float medianVoltage = (NUM_SAMPLES % 2 == 0) ? 
+        (voltageReadings[NUM_SAMPLES / 2] + voltageReadings[NUM_SAMPLES / 2 - 1]) / 2.0 : 
+        voltageReadings[NUM_SAMPLES / 2];
+
+    // Update voltage buffer
+    voltageBuffer[bufferIndex] = medianVoltage;
+    bufferIndex = (bufferIndex + 1) % BUFFER_SIZE;
+
+    float sum = 0;
+    for (int i = 0; i < BUFFER_SIZE; i++) {
+        sum += voltageBuffer[i];
+    }
+    return sum / BUFFER_SIZE;
+}
+
+// ✅ Convert Voltage to pH Value
+float getStablePH(float voltage) {
+    return (voltage - PH_NEUTRAL_VOLTAGE) / PH_SLOPE + 7.0;
+}
+
+// ✅ Setup Function
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
+
+    // Connect to WiFi
+    WiFi.begin(ssid, pass);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected to WiFi");
+    
+    // Initialize Blynk
+    Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+    
+    // Setup Pins
+    pinMode(PUMP_PIN, OUTPUT);
+    pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
+    pinMode(WATER_LEVEL_SENSOR_PIN, INPUT);
+    
+    // Attach Interrupt for Flow Sensor
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), pulseCounter, FALLING);
+    
+    // Initialize LED Strips
+    strip1.begin();
+    strip2.begin();
+    strip1.show();
+    strip2.show();
+}
+
+// ✅ Main Loop
+void loop() {
+    Blynk.run();
+    setAlternatingLEDs(redIntensity, blueIntensity);
+
+    for (int i = 0; i < (photoperiod / 5000); i++) {
+        float voltage = getStableVoltage();
+        float pH = getStablePH(voltage);
+
+        Serial.print("Voltage: ");
+        Serial.print(voltage, 3);
+        Serial.print(" V | pH Value: ");
+        Serial.println(pH, 2);
+
+        Blynk.virtualWrite(V1, pH);
+
+        analogWrite(PUMP_PIN, PUMP_POWER);
+        Blynk.virtualWrite(V2, PUMP_POWER);
+
+        flowRate = (pulseCount / FLOW_CALIBRATION_FACTOR);
+        totalLiters += (flowRate / 60.0);
+        pulseCount = 0;
+
+        Serial.print("Flow Rate: ");
+        Serial.print(flowRate);
+        Serial.print(" L/min | Total: ");
+        Serial.print(totalLiters);
+        Serial.println(" L");
+
+        Blynk.virtualWrite(V3, flowRate);
+        Blynk.virtualWrite(V4, totalLiters);
+
+        // Calculate feeding countdown
+        unsigned long timeSinceLastFeeding = (millis() - lastFeedingTime) / 1000;
+        unsigned long timeLeftForFeeding = (feedingInterval / 1000) - timeSinceLastFeeding;
+        
+        if (timeLeftForFeeding < 0) {
+            lastFeedingTime = millis();
+            timeLeftForFeeding = feedingInterval / 1000;
+        }
+
+        int hours = timeLeftForFeeding / 3600;
+        int minutes = (timeLeftForFeeding % 3600) / 60;
+        int seconds = timeLeftForFeeding % 60;
+
+        char countdownString[10];
+        sprintf(countdownString, "%02d:%02d:%02d", hours, minutes, seconds);
+        Blynk.virtualWrite(V5, countdownString);
+
+        int waterLevelState = digitalRead(WATER_LEVEL_SENSOR_PIN);
+        if (waterLevelState == HIGH) {
+          Blynk.virtualWrite(V6, "Sufficient Water");
+        } else {
+          Blynk.virtualWrite(V6, "Need Refill");
+        }
+
+        delay(1000);
+    }
+
+    setAlternatingLEDs(0, 0);
+    delay(darkPeriod);
+}
