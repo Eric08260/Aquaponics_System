@@ -30,8 +30,8 @@
 #define FLOW_CALIBRATION_FACTOR 7.5
 
 // ✅ Lighting Configuration
-const int redIntensity = 200;
-const int blueIntensity = 40;
+const int redIntensity = 250;
+const int blueIntensity = 50;
 const int photoperiod = 18 * 3600 * 1000; // 18 hours
 const int darkPeriod = 6 * 3600 * 1000;   // 6 hours
 
@@ -116,6 +116,10 @@ float getStablePH(float voltage) {
     return (voltage - PH_NEUTRAL_VOLTAGE) / PH_SLOPE + 7.0;
 }
 
+// ✅ Lighting Timer Variables
+unsigned long ledStartTime = 0;
+bool isLightOn = true;
+
 // ✅ Setup Function
 void setup() {
     Serial.begin(115200);
@@ -145,6 +149,9 @@ void setup() {
     strip2.begin();
     strip1.show();
     strip2.show();
+
+    ledStartTime = millis();
+    isLightOn = true;
 }
 
 // ✅ Main Loop
@@ -202,6 +209,19 @@ void loop() {
         } else {
           Blynk.virtualWrite(V6, "Need Refill");
         }
+
+        unsigned long elapsedTime = millis() - ledStartTime;
+        if (isLightOn && elapsedTime >= photoperiod) {
+            setAlternatingLEDs(0, 0);
+            ledStartTime = millis();
+            isLightOn = false;
+        } else if (!isLightOn && elapsedTime >= darkPeriod) {
+            setAlternatingLEDs(redIntensity, blueIntensity);
+            ledStartTime = millis();
+            isLightOn = true;
+        }
+
+        Blynk.virtualWrite(V7, isLightOn ? "Lights ON" : "Lights OFF");
 
         delay(1000);
     }
