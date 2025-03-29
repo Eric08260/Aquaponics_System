@@ -1,6 +1,6 @@
-#define BLYNK_TEMPLATE_ID "TMPL6xcOo1oC5"
+#define BLYNK_TEMPLATE_ID "TMPL6h6UPIyrQ"
 #define BLYNK_TEMPLATE_NAME "Aquaponics System"
-#define BLYNK_AUTH_TOKEN "KJBjgczeTrISBeh3isop51MU2QqSDIc7"
+#define BLYNK_AUTH_TOKEN "pScZo7I07LNFtIkvcsAGUF689lnMJONE"
 
 #define BLYNK_PRINT Serial
 #include <WiFi.h>
@@ -22,8 +22,8 @@
 #define BUFFER_SIZE 5
 
 // ✅ pH Sensor Calibration
-#define PH_NEUTRAL_VOLTAGE 1.385
-#define PH_SLOPE -0.103
+#define PH_NEUTRAL_VOLTAGE 1.082
+#define PH_SLOPE 1.311
 
 // ✅ Water Pump Configuration
 #define PUMP_POWER 76  // 30% of 255 PWM
@@ -122,11 +122,11 @@ bool isLightOn = true;
 
 // ✅ pH Adjustment
 void adjustPH(float pH) {
-    if (pH <= 6) {
+    if (pH <= -20) {
         digitalWrite(PH_UP_PIN, HIGH);
         delay(1000);
         digitalWrite(PH_UP_PIN, LOW);
-    } else if (pH >= 9) {
+    } else if (pH >= 20) {
         digitalWrite(PH_DOWN_PIN, HIGH);
         delay(1000);
         digitalWrite(PH_DOWN_PIN, LOW);
